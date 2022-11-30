@@ -361,24 +361,41 @@ void ArucoTF::verifyCalibration(const int &marker_id) {
   int sample_cnt = 0;
   ROS_INFO_STREAM("Move robot to pose...");
   ROS_INFO_STREAM("Press ENTER to record sample.");
-
+  tf2::Transform tf_CalculatedWorldPosition;
+  tf2::Stamped<tf2::Transform> tf_RealWorldPosition;
+  Eigen::MatrixXf error_matrix(7, ArucoTF::num_samples);
+  Eigen::VectorXf mean_error_vector;
   while (sample_cnt < ArucoTF::num_samples) {
     ROS_INFO_STREAM("Pose: " << sample_cnt + 1 << "/"
                         << ArucoTF::num_samples);
     char c = getchar();
 
     // Get marker to world using lookup_allMarkersToWorld()
+    ArucoTF::lookup_allMarkersToWorld(1, tf_CalculatedWorldPosition);  
 
     // Get tool0 TF using lookup_markerToWorld() function
-
+    ArucoTF::lookup_markerToWorld();
+    tf2::fromMsg(ArucoTF::tform_markerToWorld, tf_RealWorldPosition);
     // Calculate the 7 dimensional error (x,y,z,qx,qy,qz,qw) between the two
+    for (int i = 0; i < 3; i++) {
+      error_matrix(i, sample_cnt) = tf_RealWorldPosition.getOrigin()[i] - tf_CalculatedWorldPosition.getOrigin()[i];
+    }
 
+    for (int i = 3; i < 7; i++) {
+      error_matrix(i, sample_cnt) = tf_RealWorldPosition.getRotation()[i] - tf_CalculatedWorldPosition.getRotation()[i];
+    }
+    
     sample_cnt++;
   }
   ROS_INFO_ONCE("Verification samples gathered");
 
   // Once the errors are gathered, calculate sample mean vector and sample covariance matrix
 
+  mean_error_vector = error_matrix.rowwise().mean();
+  std::cout << mean_error_vector << "\n";
+  Eigen::MatrixXf mean_centered = error_matrix.colwise() - mean_error_vector;
+  Eigen::MatrixXf covariance = (mean_centered * mean_centered.transpose()) / ArucoTF::num_samples;
+  std::cout << "Covariance\n" << covariance;
 }
 
 int main(int argc, char **argv) {
